@@ -1,0 +1,75 @@
+[project]
+name = "leetcoder"
+version = "0.1.0"
+description = "Automated LeetCode problem tracker and solution manager"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+leetcoder = "main:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+# Set the maximum line length to 100
+line-length = 100
+
+# Assume Python 3.11
+target-version = "py311"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+# Enable recommended rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+# Allow fix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Per-file ignores
+[tool.ruff.lint.per-file-ignores]
+"LeetCodeSolutions/__init__.py" = ["N999"]  # Allow non-standard module name
+"LeetCodeSolutions/utils/__init__.py" = ["N999"]  # Allow non-standard module name
+"LeetCodeSolutions/p*.py" = ["N802", "F821", "F401", "UP035"]  # Allow LeetCode function names, typing imports in generated files
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Use Unix line endings
+line-ending = "auto"
