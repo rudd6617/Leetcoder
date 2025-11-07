@@ -80,10 +80,6 @@ class Database:
         """Context manager exit."""
         self.close()
 
-    def __del__(self):
-        """Cleanup on destruction."""
-        self.close()
-
     def upsert_problem(self, problem_data: dict):
         """
         Insert or update a problem.
@@ -243,6 +239,23 @@ class Database:
         cursor.execute("SELECT 1 FROM added_problems WHERE id = ?", (problem_id,))
         return cursor.fetchone() is not None
 
+    def get_added_filename(self, problem_id: int) -> str | None:
+        """
+        Get the filename for an added problem.
+
+        Args:
+            problem_id: Problem ID
+
+        Returns:
+            Filename if problem is added, None otherwise
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT filename FROM added_problems WHERE id = ?", (problem_id,))
+        row = cursor.fetchone()
+        return row["filename"] if row else None
+
     def get_all_added_problems(self) -> list[dict]:
         """
         Get all added problems.
@@ -260,6 +273,70 @@ class Database:
             JOIN added_problems a ON p.id = a.id
             ORDER BY p.id
         """
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            problem = self._row_to_dict(row)
+            problem["filename"] = row["filename"]
+            results.append(problem)
+
+        return results
+
+    def search_added_by_title(self, keyword: str) -> list[dict]:
+        """
+        Search added problems by title keyword.
+
+        Args:
+            keyword: Search keyword
+
+        Returns:
+            List of matching added problems
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT p.*, a.filename, a.added_at
+            FROM problems p
+            JOIN added_problems a ON p.id = a.id
+            WHERE p.title LIKE ? OR p.slug LIKE ?
+            ORDER BY p.id
+        """,
+            (f"%{keyword}%", f"%{keyword}%"),
+        )
+
+        results = []
+        for row in cursor.fetchall():
+            problem = self._row_to_dict(row)
+            problem["filename"] = row["filename"]
+            results.append(problem)
+
+        return results
+
+    def search_added_by_tag(self, tag: str) -> list[dict]:
+        """
+        Search added problems by tag.
+
+        Args:
+            tag: Tag name
+
+        Returns:
+            List of matching added problems
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT p.*, a.filename, a.added_at
+            FROM problems p
+            JOIN added_problems a ON p.id = a.id
+            WHERE p.tags LIKE ?
+            ORDER BY p.id
+        """,
+            (f"%{tag}%",),
         )
 
         results = []

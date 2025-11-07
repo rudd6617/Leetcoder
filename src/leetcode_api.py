@@ -68,7 +68,6 @@ class LeetCodeAPI:
             data = response.json()
 
             if "errors" in data:
-                print(f"GraphQL errors: {data['errors']}")
                 return None
 
             question = data.get("data", {}).get("question")
@@ -77,8 +76,7 @@ class LeetCodeAPI:
 
             return self._format_problem_data(question)
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching problem: {e}")
+        except requests.exceptions.RequestException:
             return None
 
     def _load_id_to_slug_cache(self):
@@ -126,8 +124,8 @@ class LeetCodeAPI:
 
             self._cache_loaded = True
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error loading ID-to-slug cache: {e}")
+        except requests.exceptions.RequestException:
+            pass
 
     def get_problem_by_id(self, problem_id: int) -> dict | None:
         """
@@ -145,7 +143,6 @@ class LeetCodeAPI:
         # Lookup slug from cache
         slug = self._id_to_slug_cache.get(problem_id)
         if not slug:
-            print(f"Problem with ID {problem_id} not found")
             return None
 
         return self.get_problem_by_slug(slug)
@@ -161,10 +158,6 @@ class LeetCodeAPI:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
-        self.close()
-
-    def __del__(self):
-        """Cleanup on object destruction."""
         self.close()
 
     def _format_problem_data(self, question: dict) -> dict:
@@ -233,14 +226,13 @@ class LeetCodeAPI:
                     if problem_data:
                         db.upsert_problem(problem_data)
                         synced_count += 1
-                    else:
-                        print(f"[!]️  Failed to fetch problem {problem_id} ({slug})")
 
                     # Rate limiting: be nice to LeetCode servers
                     time.sleep(0.1)
 
-                except Exception as e:
-                    print(f"[!]️  Error syncing problem {problem_id}: {e}")
+                except Exception:
+                    # Continue on error, don't interrupt sync
+                    pass
 
                 progress.advance(task)
 

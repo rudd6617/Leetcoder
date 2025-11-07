@@ -51,36 +51,18 @@ class ProblemIndex:
             problem_id: Problem number
 
         Returns:
-            True if problem file exists, False otherwise
+            True if problem is added and file exists, False otherwise
         """
-        # Check database record
-        db_record = self.db.is_added(problem_id)
-
-        if not db_record:
+        if not self.db.is_added(problem_id):
             return False
 
         # Get filename from database
-        conn = self.db._get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT filename FROM added_problems WHERE id = ?", (problem_id,))
-        row = cursor.fetchone()
-
-        if not row:
+        filename = self.db.get_added_filename(problem_id)
+        if not filename:
             return False
 
-        filename = row["filename"]
         filepath = self.solutions_dir / filename
-
-        # Check if file actually exists
-        file_exists = filepath.exists()
-
-        # Sync database with filesystem: if file doesn't exist, remove DB record
-        if not file_exists:
-            cursor.execute("DELETE FROM added_problems WHERE id = ?", (problem_id,))
-            conn.commit()
-            return False
-
-        return True
+        return filepath.exists()
 
     def search_by_title(self, keyword: str) -> list[dict]:
         """
@@ -92,12 +74,7 @@ class ProblemIndex:
         Returns:
             List of matching problems
         """
-        # Only return added problems
-        all_added = self.db.get_all_added_problems()
-        keyword = keyword.lower()
-        return [
-            p for p in all_added if keyword in p["title"].lower() or keyword in p["slug"].lower()
-        ]
+        return self.db.search_added_by_title(keyword)
 
     def search_by_tag(self, tag: str) -> list[dict]:
         """
@@ -109,10 +86,7 @@ class ProblemIndex:
         Returns:
             List of matching problems
         """
-        # Only return added problems
-        all_added = self.db.get_all_added_problems()
-        tag = tag.lower()
-        return [p for p in all_added if any(tag in t.lower() for t in p["tags"])]
+        return self.db.search_added_by_tag(tag)
 
     def get_all_problems(self) -> list[dict]:
         """

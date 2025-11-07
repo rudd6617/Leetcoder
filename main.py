@@ -27,6 +27,134 @@ def get_difficulty_color(difficulty: str) -> str:
     return DIFFICULTY_COLORS.get(difficulty, "white")
 
 
+def create_problem_table(problems: list[dict], title: str, show_filename: bool = False) -> Table:
+    """
+    Create a formatted table for displaying problems.
+
+    Args:
+        problems: List of problem dictionaries
+        title: Table title
+        show_filename: Whether to include filename column
+
+    Returns:
+        Rich Table object
+    """
+    table = Table(title=title, box=box.ROUNDED)
+    table.add_column("ID", justify="right", style="cyan")
+    table.add_column("Title", style="white")
+    table.add_column("Difficulty", justify="center")
+    table.add_column("Tags", style="dim")
+
+    if show_filename:
+        table.add_column("File", style="blue")
+
+    for problem in problems:
+        difficulty_color = get_difficulty_color(problem["difficulty"])
+        tags_display = ", ".join(problem["tags"][:3]) + ("..." if len(problem["tags"]) > 3 else "")
+
+        row = [
+            str(problem["id"]),
+            problem["title"],
+            f"[{difficulty_color}]{problem['difficulty']}[/{difficulty_color}]",
+            tags_display,
+        ]
+
+        if show_filename:
+            row.append(problem["filename"])
+
+        table.add_row(*row)
+
+    return table
+
+
+def resolve_problem(pid: str, index: ProblemIndex, api: LeetCodeAPI) -> dict | None:
+    """
+    Resolve problem by ID or slug, trying local database first, then API.
+
+    Args:
+        pid: Problem ID (as string) or slug
+        index: Problem index manager
+        api: LeetCode API client
+
+    Returns:
+        Problem data dictionary or None if not found
+    """
+    # Check if it's a numeric ID or slug
+    if pid.isdigit():
+        problem_id = int(pid)
+        problem_data = index.get_problem(problem_id)
+        if problem_data:
+            return problem_data
+
+        # Not in local database, try API
+        console.print(
+            f"[yellow][!] Problem {problem_id} not in local database. "
+            f"Fetching from LeetCode...[/yellow]"
+        )
+        return api.get_problem_by_id(problem_id)
+
+    # It's a slug
+    problem_data = index.db.get_problem_by_slug(pid)
+    if problem_data:
+        return problem_data
+
+    # Not in local database, try API
+    console.print(
+        f"[yellow][!] Problem '{pid}' not in local database. "
+        f"Fetching from LeetCode...[/yellow]"
+    )
+    return api.get_problem_by_slug(pid)
+
+
+def add_single_problem(
+    pid: str,
+    api: LeetCodeAPI,
+    generator: SolutionGenerator,
+    index: ProblemIndex,
+) -> bool:
+    """
+    Add a single problem.
+
+    Args:
+        pid: Problem ID or slug
+        api: LeetCode API client
+        generator: Solution file generator
+        index: Problem index manager
+
+    Returns:
+        True if successfully added, False otherwise
+    """
+    # Resolve problem from database or API
+    problem_data = resolve_problem(pid, index, api)
+
+    if not problem_data:
+        console.print(f"[red][X] Problem '{pid}' not found[/red]")
+        console.print(
+            "[dim][*] Hint: Run 'uv run python main.py sync' to download all problems[/dim]"
+        )
+        return False
+
+    # Check if already exists
+    if index.problem_exists(problem_data["id"]):
+        console.print(
+            f"[yellow][!] Problem {problem_data['id']} ({problem_data['title']}) "
+            f"already exists[/yellow]"
+        )
+        return False
+
+    # Generate solution file
+    filepath = generator.generate_solution_file(problem_data)
+
+    # Add to index
+    index.add_problem(problem_data, filepath.name)
+
+    console.print(
+        f"[green][OK] Added: {problem_data['id']}. {problem_data['title']} "
+        f"({problem_data['difficulty']})[/green]"
+    )
+    return True
+
+
 def add_problem(
     problem_ids: list[str],
     api: LeetCodeAPI,
@@ -44,57 +172,7 @@ def add_problem(
     """
     for pid in problem_ids:
         try:
-            problem_data = None
-
-            # Try to parse as integer (problem ID)
-            try:
-                problem_id = int(pid)
-                # Try local database first
-                problem_data = index.get_problem(problem_id)
-                if not problem_data:
-                    # Fall back to API
-                    console.print(
-                        f"[yellow][!] Problem {problem_id} not in local database. "
-                        f"Fetching from LeetCode...[/yellow]"
-                    )
-                    problem_data = api.get_problem_by_id(problem_id)
-            except ValueError:
-                # It's a slug - try database first
-                problem_data = index.db.get_problem_by_slug(pid)
-                if not problem_data:
-                    # Fall back to API
-                    console.print(
-                        f"[yellow][!] Problem '{pid}' not in local database. "
-                        f"Fetching from LeetCode...[/yellow]"
-                    )
-                    problem_data = api.get_problem_by_slug(pid)
-
-            if not problem_data:
-                console.print(f"[red][X] Problem '{pid}' not found[/red]")
-                console.print(
-                    "[dim][*] Hint: Run 'uv run python main.py sync' to download all problems[/dim]"
-                )
-                continue
-
-            # Check if already exists
-            if index.problem_exists(problem_data["id"]):
-                console.print(
-                    f"[yellow][!] Problem {problem_data['id']} ({problem_data['title']}) "
-                    f"already exists[/yellow]"
-                )
-                continue
-
-            # Generate solution file
-            filepath = generator.generate_solution_file(problem_data)
-
-            # Add to index
-            index.add_problem(problem_data, filepath.name)
-
-            console.print(
-                f"[green][OK] Added: {problem_data['id']}. {problem_data['title']} "
-                f"({problem_data['difficulty']})[/green]"
-            )
-
+            add_single_problem(pid, api, generator, index)
         except Exception as e:
             console.print(f"[red][X] Error adding problem '{pid}': {e}[/red]")
 
@@ -119,22 +197,7 @@ def search_problems(keyword: str, index: ProblemIndex, search_by_tag: bool = Fal
         console.print(f"[yellow]No problems found with {search_type} '{keyword}'[/yellow]")
         return
 
-    table = Table(title=f"Search Results: '{keyword}'", box=box.ROUNDED)
-    table.add_column("ID", justify="right", style="cyan")
-    table.add_column("Title", style="white")
-    table.add_column("Difficulty", justify="center")
-    table.add_column("Tags", style="dim")
-
-    for problem in results:
-        difficulty_color = get_difficulty_color(problem["difficulty"])
-
-        table.add_row(
-            str(problem["id"]),
-            problem["title"],
-            f"[{difficulty_color}]{problem['difficulty']}[/{difficulty_color}]",
-            ", ".join(problem["tags"][:3]) + ("..." if len(problem["tags"]) > 3 else ""),
-        )
-
+    table = create_problem_table(results, f"Search Results: '{keyword}'")
     console.print(table)
     console.print(f"\nFound {len(results)} problem(s)")
 
@@ -152,24 +215,7 @@ def list_problems(index: ProblemIndex):
         console.print("[yellow]No problems added yet. Use 'add' command to get started.[/yellow]")
         return
 
-    table = Table(title="All Problems", box=box.ROUNDED)
-    table.add_column("ID", justify="right", style="cyan")
-    table.add_column("Title", style="white")
-    table.add_column("Difficulty", justify="center")
-    table.add_column("Tags", style="dim")
-    table.add_column("File", style="blue")
-
-    for problem in problems:
-        difficulty_color = get_difficulty_color(problem["difficulty"])
-
-        table.add_row(
-            str(problem["id"]),
-            problem["title"],
-            f"[{difficulty_color}]{problem['difficulty']}[/{difficulty_color}]",
-            ", ".join(problem["tags"][:3]) + ("..." if len(problem["tags"]) > 3 else ""),
-            problem["filename"],
-        )
-
+    table = create_problem_table(problems, "All Problems", show_filename=True)
     console.print(table)
     console.print(f"\nTotal: {len(problems)} problem(s)")
 

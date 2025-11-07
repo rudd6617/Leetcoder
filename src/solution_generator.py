@@ -91,7 +91,6 @@ class SolutionGenerator:
 
         # Check if file already exists
         if filepath.exists():
-            print(f"File {filename} already exists. Skipping...")
             return filepath
 
         # Convert HTML content to text
@@ -113,7 +112,6 @@ class SolutionGenerator:
 
         # Write file with Unix line endings
         filepath.write_text(content, encoding="utf-8", newline='\n')
-        print(f"[OK] Created: {filename}")
         return filepath
 
     def _extract_imports(self, code_snippet: str) -> list[str]:
