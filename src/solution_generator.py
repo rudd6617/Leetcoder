@@ -1,48 +1,9 @@
 """Generate solution files for LeetCode problems."""
 
 import re
-from html.parser import HTMLParser
 from pathlib import Path
 
-
-class HTMLToTextParser(HTMLParser):
-    """Convert HTML to plain text, preserving structure."""
-
-    def __init__(self):
-        super().__init__()
-        self.text = []
-        self.in_pre = False
-        self.in_strong = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "pre":
-            self.in_pre = True
-            self.text.append("\n")
-        elif tag == "strong":
-            self.in_strong = True
-        elif tag == "p" or tag == "ul":
-            self.text.append("\n")
-        elif tag == "li":
-            self.text.append("\n- ")
-
-    def handle_endtag(self, tag):
-        if tag == "pre":
-            self.in_pre = False
-            self.text.append("\n")
-        elif tag == "strong":
-            self.in_strong = False
-        elif tag in ["p", "ul"]:
-            self.text.append("\n")
-
-    def handle_data(self, data):
-        if data.strip():
-            self.text.append(data)
-
-    def get_text(self):
-        text = "".join(self.text)
-        # Clean up excessive newlines
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text.strip()
+import html2text
 
 
 class SolutionGenerator:
@@ -58,6 +19,12 @@ class SolutionGenerator:
         self.solutions_dir = Path(solutions_dir)
         self.solutions_dir.mkdir(exist_ok=True)
 
+        # Configure html2text converter
+        self.html_converter = html2text.HTML2Text()
+        self.html_converter.ignore_links = False
+        self.html_converter.ignore_images = True
+        self.html_converter.body_width = 0  # No wrapping
+
     def generate_filename(self, problem_id: int, slug: str) -> str:
         """
         Generate filename for a problem.
@@ -72,14 +39,20 @@ class SolutionGenerator:
         # Format ID with leading zeros (4 digits)
         formatted_id = f"{problem_id:04d}"
         # Clean slug: replace hyphens with underscores
-        clean_slug = slug.replace("-", "_")
+        clean_slug = (slug or "unknown").replace("-", "_")
         return f"p{formatted_id}_{clean_slug}.py"
 
     def html_to_text(self, html: str) -> str:
         """Convert HTML content to plain text."""
-        parser = HTMLToTextParser()
-        parser.feed(html)
-        return parser.get_text()
+        if not html:
+            return "No description available"
+        text = self.html_converter.handle(html)
+        # Clean up excessive newlines
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Remove trailing whitespace from each line
+        lines = text.split('\n')
+        text = '\n'.join(line.rstrip() for line in lines)
+        return text.strip()
 
     def extract_function_signature(self, code_snippet: str) -> dict:
         """
@@ -138,13 +111,15 @@ class SolutionGenerator:
             imports=imports,
         )
 
-        # Write file
-        filepath.write_text(content, encoding="utf-8")
-        print(f"✅ Created: {filename}")
+        # Write file with Unix line endings
+        filepath.write_text(content, encoding="utf-8", newline='\n')
+        print(f"[OK] Created: {filename}")
         return filepath
 
     def _extract_imports(self, code_snippet: str) -> list[str]:
         """Extract import statements from code snippet."""
+        if not code_snippet:
+            return []
         imports = []
         for line in code_snippet.split("\n"):
             line = line.strip()
@@ -206,9 +181,12 @@ if __name__ == "__main__":
     # Example:
     # result = sol.{func_info["name"]}(...)
     # assert result == expected
-    # print("✅ All test cases passed!")
+    # print("[OK] All test cases passed!")
 
-    print("⚠️  Add your test cases above")
+    print("[!]️  Add your test cases above")
 '''
 
-        return template
+        # Final cleanup: remove trailing whitespace from all lines
+        lines = template.split('\n')
+        cleaned = '\n'.join(line.rstrip() for line in lines)
+        return cleaned

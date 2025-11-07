@@ -1,6 +1,9 @@
 """LeetCode GraphQL API client for fetching problem information."""
 
+import time
+
 import requests
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 
 class LeetCodeAPI:
@@ -18,6 +21,9 @@ class LeetCodeAPI:
                 "Referer": "https://leetcode.com",
             }
         )
+        # Cache for ID -> slug mapping to avoid repeated API calls
+        self._id_to_slug_cache: dict[int, str] = {}
+        self._cache_loaded = False
 
     def get_problem_by_slug(self, slug: str) -> dict | None:
         """
@@ -75,17 +81,11 @@ class LeetCodeAPI:
             print(f"Error fetching problem: {e}")
             return None
 
-    def get_problem_by_id(self, problem_id: int) -> dict | None:
-        """
-        Get problem details by problem frontend ID.
+    def _load_id_to_slug_cache(self):
+        """Load ID to slug mapping cache (called once)."""
+        if self._cache_loaded:
+            return
 
-        Args:
-            problem_id: Problem frontend ID (e.g., 1 for "Two Sum")
-
-        Returns:
-            Dictionary containing problem information or None if not found
-        """
-        # First, we need to get all problems to find the slug by ID
         query = """
         query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
             problemsetQuestionList: questionList(
@@ -117,24 +117,62 @@ class LeetCodeAPI:
 
             questions = data.get("data", {}).get("problemsetQuestionList", {}).get("questions", [])
 
-            # Find the slug for this problem ID
+            # Build cache: int ID -> slug
             for q in questions:
-                if q.get("questionFrontendId") == str(problem_id):
-                    slug = q.get("titleSlug")
-                    return self.get_problem_by_slug(slug)
+                frontend_id = q.get("questionFrontendId")
+                slug = q.get("titleSlug")
+                if frontend_id and slug:
+                    self._id_to_slug_cache[int(frontend_id)] = slug
 
+            self._cache_loaded = True
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error loading ID-to-slug cache: {e}")
+
+    def get_problem_by_id(self, problem_id: int) -> dict | None:
+        """
+        Get problem details by problem frontend ID.
+
+        Args:
+            problem_id: Problem frontend ID (e.g., 1 for "Two Sum")
+
+        Returns:
+            Dictionary containing problem information or None if not found
+        """
+        # Load cache on first call (lazy loading)
+        self._load_id_to_slug_cache()
+
+        # Lookup slug from cache
+        slug = self._id_to_slug_cache.get(problem_id)
+        if not slug:
             print(f"Problem with ID {problem_id} not found")
             return None
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching problem list: {e}")
-            return None
+        return self.get_problem_by_slug(slug)
+
+    def close(self):
+        """Close the HTTP session and release resources."""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.close()
+
+    def __del__(self):
+        """Cleanup on object destruction."""
+        self.close()
 
     def _format_problem_data(self, question: dict) -> dict:
         """Format raw GraphQL response into structured problem data."""
         # Get Python code snippet
         python_snippet = ""
-        for snippet in question.get("codeSnippets", []):
+        code_snippets = question.get("codeSnippets") or []
+        for snippet in code_snippets:
             if snippet.get("langSlug") == "python3":
                 python_snippet = snippet.get("code", "")
                 break
@@ -145,8 +183,65 @@ class LeetCodeAPI:
             "slug": question.get("titleSlug", ""),
             "difficulty": question.get("difficulty", ""),
             "content": question.get("content", ""),
-            "tags": [tag["name"] for tag in question.get("topicTags", [])],
-            "hints": question.get("hints", []),
+            "tags": [tag["name"] for tag in (question.get("topicTags") or [])],
+            "hints": question.get("hints") or [],
             "code_snippet": python_snippet,
             "url": self.PROBLEM_URL.format(slug=question.get("titleSlug", "")),
         }
+
+    def sync_all_problems(self, db, skip_existing: bool = True):
+        """
+        Sync all LeetCode problems to database.
+
+        Args:
+            db: Database instance
+            skip_existing: If True, skip problems already in database
+
+        Returns:
+            Number of problems synced
+        """
+        # First, load the ID-to-slug cache if not already loaded
+        self._load_id_to_slug_cache()
+
+        total = len(self._id_to_slug_cache)
+        synced_count = 0
+        skipped_count = 0
+
+        print(f"\n🔄 Syncing {total} problems from LeetCode...")
+        print("⏳ This may take 2-5 minutes. Please be patient.\n")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+        ) as progress:
+            task = progress.add_task("Syncing problems...", total=total)
+
+            for problem_id, slug in self._id_to_slug_cache.items():
+                # Check if already exists
+                if skip_existing:
+                    existing = db.get_problem(problem_id)
+                    if existing:
+                        skipped_count += 1
+                        progress.advance(task)
+                        continue
+
+                # Fetch full problem details
+                try:
+                    problem_data = self.get_problem_by_slug(slug)
+                    if problem_data:
+                        db.upsert_problem(problem_data)
+                        synced_count += 1
+                    else:
+                        print(f"[!]️  Failed to fetch problem {problem_id} ({slug})")
+
+                    # Rate limiting: be nice to LeetCode servers
+                    time.sleep(0.1)
+
+                except Exception as e:
+                    print(f"[!]️  Error syncing problem {problem_id}: {e}")
+
+                progress.advance(task)
+
+        return synced_count, skipped_count

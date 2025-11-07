@@ -7,11 +7,24 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from src.database import Database
 from src.leetcode_api import LeetCodeAPI
 from src.problem_index import ProblemIndex
 from src.solution_generator import SolutionGenerator
 
-console = Console()
+console = Console(force_terminal=True, legacy_windows=False)
+
+# Difficulty color mapping
+DIFFICULTY_COLORS = {
+    "Easy": "green",
+    "Medium": "yellow",
+    "Hard": "red",
+}
+
+
+def get_difficulty_color(difficulty: str) -> str:
+    """Get color for difficulty level."""
+    return DIFFICULTY_COLORS.get(difficulty, "white")
 
 
 def add_problem(
@@ -31,22 +44,42 @@ def add_problem(
     """
     for pid in problem_ids:
         try:
+            problem_data = None
+
             # Try to parse as integer (problem ID)
             try:
                 problem_id = int(pid)
-                problem_data = api.get_problem_by_id(problem_id)
+                # Try local database first
+                problem_data = index.get_problem(problem_id)
+                if not problem_data:
+                    # Fall back to API
+                    console.print(
+                        f"[yellow][!] Problem {problem_id} not in local database. "
+                        f"Fetching from LeetCode...[/yellow]"
+                    )
+                    problem_data = api.get_problem_by_id(problem_id)
             except ValueError:
-                # It's a slug
-                problem_data = api.get_problem_by_slug(pid)
+                # It's a slug - try database first
+                problem_data = index.db.get_problem_by_slug(pid)
+                if not problem_data:
+                    # Fall back to API
+                    console.print(
+                        f"[yellow][!] Problem '{pid}' not in local database. "
+                        f"Fetching from LeetCode...[/yellow]"
+                    )
+                    problem_data = api.get_problem_by_slug(pid)
 
             if not problem_data:
-                console.print(f"[red]✗ Problem '{pid}' not found[/red]")
+                console.print(f"[red][X] Problem '{pid}' not found[/red]")
+                console.print(
+                    "[dim][*] Hint: Run 'uv run python main.py sync' to download all problems[/dim]"
+                )
                 continue
 
             # Check if already exists
             if index.problem_exists(problem_data["id"]):
                 console.print(
-                    f"[yellow]⚠ Problem {problem_data['id']} ({problem_data['title']}) "
+                    f"[yellow][!] Problem {problem_data['id']} ({problem_data['title']}) "
                     f"already exists[/yellow]"
                 )
                 continue
@@ -58,12 +91,12 @@ def add_problem(
             index.add_problem(problem_data, filepath.name)
 
             console.print(
-                f"[green]✓ Added: {problem_data['id']}. {problem_data['title']} "
+                f"[green][OK] Added: {problem_data['id']}. {problem_data['title']} "
                 f"({problem_data['difficulty']})[/green]"
             )
 
         except Exception as e:
-            console.print(f"[red]✗ Error adding problem '{pid}': {e}[/red]")
+            console.print(f"[red][X] Error adding problem '{pid}': {e}[/red]")
 
 
 def search_problems(keyword: str, index: ProblemIndex, search_by_tag: bool = False):
@@ -93,11 +126,7 @@ def search_problems(keyword: str, index: ProblemIndex, search_by_tag: bool = Fal
     table.add_column("Tags", style="dim")
 
     for problem in results:
-        difficulty_color = {
-            "Easy": "green",
-            "Medium": "yellow",
-            "Hard": "red",
-        }.get(problem["difficulty"], "white")
+        difficulty_color = get_difficulty_color(problem["difficulty"])
 
         table.add_row(
             str(problem["id"]),
@@ -131,11 +160,7 @@ def list_problems(index: ProblemIndex):
     table.add_column("File", style="blue")
 
     for problem in problems:
-        difficulty_color = {
-            "Easy": "green",
-            "Medium": "yellow",
-            "Hard": "red",
-        }.get(problem["difficulty"], "white")
+        difficulty_color = get_difficulty_color(problem["difficulty"])
 
         table.add_row(
             str(problem["id"]),
@@ -174,7 +199,7 @@ def show_statistics(index: ProblemIndex):
         for difficulty in ["Easy", "Medium", "Hard"]:
             count = stats["by_difficulty"].get(difficulty, 0)
             if count > 0:
-                color = {"Easy": "green", "Medium": "yellow", "Hard": "red"}[difficulty]
+                color = get_difficulty_color(difficulty)
                 diff_table.add_row(f"[{color}]{difficulty}[/{color}]", str(count))
 
         console.print(diff_table)
@@ -191,6 +216,47 @@ def show_statistics(index: ProblemIndex):
         console.print(tag_table)
 
 
+def sync_database(api: LeetCodeAPI, force: bool = False):
+    """
+    Sync all LeetCode problems to local database.
+
+    Args:
+        api: LeetCode API client
+        force: If True, re-sync all problems (not just new ones)
+    """
+    db = Database()
+
+    # Check current status
+    status = db.get_sync_status()
+
+    if status["total_problems"] > 0 and not force:
+        console.print(
+            f"\n[green][OK] Database already contains {status['total_problems']} problems[/green]"
+        )
+        console.print(f"[dim]Last synced: {status['last_sync']}[/dim]")
+        console.print("\n[yellow]Use --force to re-sync all problems[/yellow]")
+        db.close()
+        return
+
+    # Perform sync
+    try:
+        synced, skipped = api.sync_all_problems(db, skip_existing=not force)
+
+        console.print("\n[green][OK] Sync complete![/green]")
+        console.print(f"[cyan]   New problems synced: {synced}[/cyan]")
+        if skipped > 0:
+            console.print(f"[dim]   Skipped (already exists): {skipped}[/dim]")
+
+        # Show final status
+        status = db.get_sync_status()
+        console.print(f"\n[bold]Total problems in database: {status['total_problems']}[/bold]")
+
+    except Exception as e:
+        console.print(f"\n[red][X] Sync failed: {e}[/red]")
+    finally:
+        db.close()
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -198,13 +264,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py add 1              # Add problem by ID
+  python main.py sync               # Sync all problems to local database (first time)
+  python main.py add 1              # Add problem by ID (from local database)
   python main.py add two-sum        # Add problem by slug
   python main.py add 1 2 15         # Add multiple problems
   python main.py search array       # Search by keyword
   python main.py search -t "Array"  # Search by tag
   python main.py list               # List all problems
   python main.py stats              # Show statistics
+
+Workflow:
+  1. Run 'sync' once to download all problems to local database
+  2. Use 'add' to generate solution files (instant, no network needed)
+  3. Use 'list', 'search', 'stats' to manage your progress
         """,
     )
 
@@ -227,6 +299,12 @@ Examples:
     # Stats command
     subparsers.add_parser("stats", help="Show statistics")
 
+    # Sync command
+    sync_parser = subparsers.add_parser(
+        "sync", help="Sync all problems from LeetCode to local database"
+    )
+    sync_parser.add_argument("--force", action="store_true", help="Force re-sync all problems")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -247,6 +325,8 @@ Examples:
         list_problems(index)
     elif args.command == "stats":
         show_statistics(index)
+    elif args.command == "sync":
+        sync_database(api, force=args.force)
 
 
 if __name__ == "__main__":

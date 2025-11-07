@@ -30,11 +30,11 @@
 
 ## 功能特色
 
-✨ **全自動化** - 從 LeetCode 獲取題目資訊，自動生成 Python 解題文件
-📁 **結構清晰** - 每題獨立文件，包含完整題目描述、範例和標籤
-🔄 **版本追蹤** - 支持同一題目多個解法版本
-🔍 **便捷管理** - 搜索、統計、列表等功能一應俱全
-🎨 **美觀輸出** - Rich library 提供彩色終端輸出
+- ✨ **全自動化** - 從 LeetCode 獲取題目資訊，自動生成 Python 解題文件
+- 📁 **結構清晰** - 每題獨立文件，包含完整題目描述、範例和標籤
+- 🔄 **版本追蹤** - 支持同一題目多個解法版本
+- 🔍 **便捷管理** - 搜索、統計、列表等功能一應俱全
+- 🎨 **美觀輸出** - Rich library 提供彩色終端輸出
 
 ## 快速預覽
 
@@ -241,13 +241,13 @@ leetcoder/
 │   └── problem_index.py            # 題目索引管理
 ├── LeetCodeSolutions/              # 解題目錄
 │   ├── __init__.py
-│   ├── p0001_two_sum.py           # 題目文件
+│   ├── p0001_two_sum.py            # 題目文件
 │   ├── p0002_add_two_numbers.py
 │   ├── p0015_3sum.py
 │   └── utils/                      # 通用數據結構
 │       ├── __init__.py
-│       ├── list_node.py           # 鏈表節點定義
-│       └── tree_node.py           # 二叉樹節點定義
+│       ├── list_node.py            # 鏈表節點定義
+│       └── tree_node.py            # 二叉樹節點定義
 ├── data/
 │   └── problems.json               # 題目索引（自動生成）
 ├── pyproject.toml                  # 項目配置
@@ -541,9 +541,6 @@ LeetCodeSolutions/         - 用戶解題目錄
 - [ ] 添加每日一題提醒功能
 - [ ] 導出為 Markdown 筆記
 
-## 貢獻
-
-歡迎提交 Issue 和 Pull Request！
 
 ### 提交 Issue
 
@@ -566,45 +563,7 @@ LeetCodeSolutions/         - 用戶解題目錄
 uv run ruff check .
 uv run ruff format .
 ```
-
-## 相關資源
-
-- [LeetCode 官網](https://leetcode.com/)
-- [LeetCode 中文版](https://leetcode.cn/)
-- [Ruff - Python Linter](https://github.com/astral-sh/ruff)
-- [uv - Python Package Manager](https://github.com/astral-sh/uv)
-- [Rich - Python Terminal](https://github.com/Textualize/rich)
-
-## 致謝
-
-- 感謝 [LeetCode](https://leetcode.com/) 提供優質的算法題目平台
-- 感謝 [Astral](https://astral.sh/) 開發的 uv 和 ruff 工具
-- 感謝所有貢獻者和使用者的反饋
-
-## License
-
-MIT License
-
-Copyright (c) 2025 LeetCoder
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
+<!-- 
 ---
 
 <div align="center">
@@ -613,4 +572,4 @@ SOFTWARE.
 
 Made with ❤️ by LeetCode enthusiasts
 
-</div>
+</div> -->
